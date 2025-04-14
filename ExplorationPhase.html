@@ -7,27 +7,39 @@
 
 {{ formfields }}
 
-<p>This is the <strong>exploration phase</strong>. You can freely sample decks to learn how they work. Your choices in this phase will <strong>not</strong> affect your final performance.</p>
+<p>This is the <strong>exploration phase</strong>. You can freely sample decks to learn how they work.
+Your choices in this phase will <strong>not</strong> affect your final performance.</p>
 
 {% if player.time_pressure %}
 <p><strong>Time elapsed:</strong> <span id="timer">0</span> seconds</p>
 <p><strong>Penalty:</strong> <span id="penalty">0</span> points</p>
 <p><strong>Cumulative Payoff:</strong> <span id="cum_payoff">3000</span> points</p>
-{% else %}
-<p><strong>Cumulative Payoff:</strong> <span id="cum_payoff">3000</span> points</p>
 {% endif %}
 
 {% if player.competition %}
-<div id="scoreboard" style="margin-top: 1rem;">
-    <h5>🏆 Group Scoreboard</h5>
-    <ul id="scoreboard-list"></ul>
+<div id="scoreboard-container">
+    <h4>🏆 Group Scoreboard</h4>
+    <table class="table table-sm" id="scoreboard">
+        <thead><tr><th>Rank</th><th>Player</th><th>Payoff</th></tr></thead>
+        <tbody></tbody>
+    </table>
 </div>
 {% endif %}
 
 <div class="container">
     <table class="table">
-        <tr><td>Last card reward</td><th id="reward" style="color: green"></th></tr>
-        <tr><td>Last card cost</td><th id="cost" style="color: red"></th></tr>
+        <colgroup>
+            <col style="width: 50%" />
+            <col style="width: 50%" />
+        </colgroup>
+        <tr>
+            <td>Last card reward</td>
+            <th id="reward" style="color: green"></th>
+        </tr>
+        <tr>
+            <td>Last card cost</td>
+            <th id="cost" style="color: red"></th>
+        </tr>
     </table>
 
     <div class="row">
@@ -50,80 +62,115 @@
     let buttons = document.getElementsByClassName('btn-card');
     let msgCost = document.getElementById('cost');
     let msgReward = document.getElementById('reward');
-    let cumPayoffDisplay = document.getElementById('cum_payoff');
+
     {% if player.time_pressure %}
     let timerDisplay = document.getElementById('timer');
     let penaltyDisplay = document.getElementById('penalty');
+    let cumPayoffDisplay = document.getElementById('cum_payoff');
     let startTime = Date.now();
     let timerInterval = setInterval(() => {
-        timerDisplay.textContent = Math.floor((Date.now() - startTime) / 1000);
+        let elapsed = Math.floor((Date.now() - startTime) / 1000);
+        timerDisplay.textContent = elapsed;
         liveSend({});
     }, 1000);
     {% endif %}
 
     function selectDeck(btn) {
         liveSend({ letter: btn.value });
-        for (let b of buttons) b.disabled = true;
+        for (let b of buttons) {
+            b.disabled = true;
+        }
     }
 
     function liveRecv(data) {
+
+        if (data.phase_switched) {
+            console.log("🚨 Exploration ended. Reloading page for performance...");
+            {% if player.time_pressure %} clearInterval(timerInterval); {% endif %}
+            document.getElementById('form').submit();
+            return;
+        }
+
         if (data.finished) {
             {% if player.time_pressure %} clearInterval(timerInterval); {% endif %}
             document.getElementById('form').submit();
             return;
         }
-        if (data.reward !== undefined) {
-            msgReward.innerHTML = cu(data.reward);
-            msgCost.innerHTML = data.cost === 0 ? '' : cu(data.cost);
+
+        if ('reward' in data) {
+            let cost = data.cost;
+            let reward = data.reward;
+            msgReward.innerHTML = cu(reward);
+            msgCost.innerHTML = cost === 0 ? '' : cu(cost);
         }
-        if (data.penalty !== undefined) penaltyDisplay.textContent = data.penalty;
-        if (data.cum_payoff !== undefined) cumPayoffDisplay.textContent = data.cum_payoff;
-        if (data.phase_switched) {
-            {% if player.time_pressure %} clearInterval(timerInterval); {% endif %}
-            document.getElementById('form').submit();
-            return;
+
+        if (data.penalty !== undefined) {
+            penaltyDisplay.textContent = data.penalty;
         }
-        {% if player.competition %}
-        if (data.scoreboard) updateScoreboard(data.scoreboard);
-        {% endif %}
-        for (let b of buttons) b.disabled = false;
+
+        if (data.cum_payoff !== undefined) {
+            cumPayoffDisplay.textContent = data.cum_payoff;
+        }
+
+        if (data.scoreboard !== undefined && data.scoreboard !== null) {
+            updateScoreboard(data.scoreboard);
+        }
+
+        for (let b of buttons) {
+            b.disabled = false;
+        }
     }
 
-    function cu(amount) { return `${amount} points`; }
-
-    function updateScoreboard(list) {
-        const ul = document.getElementById('scoreboard-list');
-        ul.innerHTML = '';
-        list.forEach((entry, i) => {
-            const li = document.createElement('li');
-            li.textContent = `#${i + 1}: ${entry.name} — ${entry.cum_payoff} points`;
-            ul.appendChild(li);
-        });
+    function cu(amount) {
+        return `${amount} points`;
     }
+
+    {% if player.competition %}
+    function updateScoreboard(scores) {
+        let tbody = document.querySelector('#scoreboard tbody');
+        tbody.innerHTML = '';
+        for (let entry of scores) {
+            let row = `<tr>
+                <td>${entry.rank}</td>
+                <td>Player ${entry.id}</td>
+                <td>${entry.payoff}</td>
+            </tr>`;
+            tbody.innerHTML += row;
+        }
+    }
+    {% endif %}
 
     document.addEventListener("DOMContentLoaded", function () {
+        console.log("🚀 DOM fully loaded. Sending initial liveSend...");
         liveSend({});
     });
 
     document.addEventListener("keydown", function (event) {
+
         if (event.code === "Space") {
+            console.log("⏩ Spacebar pressed: ending exploration phase.");
             {% if player.time_pressure %} clearInterval(timerInterval); {% endif %}
             liveSend({ end_exploration: true });
             return;
         }
-        const map = { 'KeyS': 'A', 'KeyF': 'B', 'KeyJ': 'C', 'KeyL': 'D' };
-        const letter = map[event.code];
+
+        let keyMap = { 'KeyS': 'A', 'KeyF': 'B', 'KeyJ': 'C', 'KeyL': 'D' };
+        let letter = keyMap[event.code];
+
         if (letter) {
+            console.log(`🎴 Key "${event.key}" pressed, selecting deck ${letter}`);
             liveSend({ letter: letter });
-            for (let b of buttons) b.disabled = true;
-            for (let b of buttons) if (b.value === letter) {
-                b.style.outline = "4px solid yellow";
-                setTimeout(() => b.style.outline = "", 200);
+
+            for (let b of buttons) { b.disabled = true; }
+            for (let b of buttons) {
+                if (b.value === letter) {
+                    b.style.outline = "4px solid yellow";
+                    setTimeout(() => b.style.outline = "", 200);
+                }
             }
         }
     });
 </script>
-
 
 
 

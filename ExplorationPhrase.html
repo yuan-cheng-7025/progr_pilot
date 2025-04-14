@@ -59,7 +59,6 @@
 
     let startTime = Date.now();
 
-    // Poll the server every second for the latest penalty and cumulative payoff
     let timerInterval = setInterval(() => {
         let elapsed = Math.floor((Date.now() - startTime) / 1000);
         timerDisplay.textContent = elapsed;
@@ -121,15 +120,44 @@
         liveSend({});
     });
 
+    // --- Keyboard handling ---
     document.addEventListener("keydown", function (event) {
+
+        // Spacebar: ends exploration
         if (event.code === "Space") {
             console.log("⏩ Spacebar pressed: ending exploration phase.");
             {% if player.time_pressure %}
             clearInterval(timerInterval);
-            liveSend({ end_exploration: true });
-            {% else %}
-            liveSend({ end_exploration: true });
             {% endif %}
+            liveSend({ end_exploration: true });
+            return;
+        }
+
+        // Map keys to deck letters
+        let keyMap = {
+            'KeyS': 'A',
+            'KeyF': 'B',
+            'KeyJ': 'C',
+            'KeyL': 'D'
+        };
+
+        let letter = keyMap[event.code];
+        if (letter) {
+            console.log(`🎴 Key "${event.key}" pressed, selecting deck ${letter}`);
+            liveSend({ letter: letter });
+
+            // Disable buttons to prevent double inputs while server responds
+            for (let b of buttons) {
+                b.disabled = true;
+            }
+
+            // Highlight the selected deck visually
+            for (let b of buttons) {
+                if (b.value === letter) {
+                    b.style.outline = "4px solid yellow";
+                    setTimeout(() => b.style.outline = "", 200);  // remove highlight after 200ms
+                }
+            }
         }
     });
 </script>

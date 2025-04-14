@@ -8,10 +8,6 @@
 <p>Your choices in this phase will count toward your final score.</p>
 <p><strong>Your total payoff:</strong> <span id="cum_payoff">0 points</span></p>
 
-{% if player.time_pressure %}
-<p><strong>Time elapsed:</strong> <span id="timer">0</span> seconds</p>
-{% endif %}
-
 <form id="form" method="post">
     {{ formfields }}
 
@@ -48,15 +44,6 @@
     let msgReward = document.getElementById('reward');
     let msgCumPayoff = document.getElementById('cum_payoff');
 
-    {% if player.time_pressure %}
-    let timerDisplay = document.getElementById('timer');
-    let startTime = Date.now();
-    let timerInterval = setInterval(() => {
-        let elapsed = Math.floor((Date.now() - startTime) / 1000);
-        timerDisplay.textContent = elapsed;
-    }, 1000);
-    {% endif %}
-
     function selectDeck(btn) {
         console.log('🕹️ Sending deck choice:', btn.value);
         liveSend({ letter: btn.value });
@@ -67,9 +54,6 @@
         console.log('📨 liveRecv got:', data);
 
         if (data.finished) {
-            {% if player.time_pressure %}
-            clearInterval(timerInterval);
-            {% endif %}
             console.log('✅ Trials complete — submitting form');
             document.getElementById('form').submit();
             return;
@@ -94,6 +78,38 @@
     document.addEventListener("DOMContentLoaded", function () {
         console.log("🚀 DOM ready — sending initial liveSend");
         liveSend({});
+    });
+
+    // Keyboard control for deck selection
+    document.addEventListener("keydown", function (event) {
+
+        let keyMap = {
+            'KeyS': 'A',
+            'KeyF': 'B',
+            'KeyJ': 'C',
+            'KeyL': 'D'
+        };
+
+        let letter = keyMap[event.code];
+        if (letter) {
+            console.log(`🎴 Key "${event.key}" pressed, selecting deck ${letter}`);
+            liveSend({ letter: letter });
+
+            // Disable buttons temporarily to avoid rapid spamming
+            for (let b of buttons) {
+                b.disabled = true;
+            }
+
+            // Visual highlight on the deck
+            for (let b of buttons) {
+                if (b.value === letter) {
+                    b.style.outline = "4px solid yellow";
+                    setTimeout(() => b.style.outline = "", 200);
+                }
+            }
+        }
+
+        // No Spacebar action here: space only ends exploration phase.
     });
 </script>
 

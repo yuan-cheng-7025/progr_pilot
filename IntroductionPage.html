@@ -1,0 +1,26 @@
+{{ extends 'global/Page.html' }}
+{{ block title }}Weclome to the Game!{{ endblock }}
+
+{{ block content }}
+
+<p>In this task, you will choose cards from four decks: A, B, C, and D.</p>
+<p>Each card gives you a reward, but also comes with a cost.</p>
+<p>Your goal is to maximize your total payoff.</p>
+
+{% if player.time_pressure and player.competition %}
+    <p>You will be penalized for additional sampling. A timer will start when the game begins. People with the highest rank will receive addtional payment at the end of the experiment.</p>
+
+{% elif player.time_pressure %}
+    <p>You will be penalized for additional sampling. A timer will start when the game begins.</p>
+
+{% elif player.competition %}
+    <p>People with the highest rank will receive addtional payment at the end of the experiment.</p>
+
+{% else %}
+{% endif %}
+<p>
+    Press the Next Butoon to proceed to the game
+</p>
+{{ next_button }}
+
+{{ endblock }}

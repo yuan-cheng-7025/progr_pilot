@@ -1,0 +1,141 @@
+{{ extends 'global/Page.html' }}
+{{ block title }}Explore your options{{ endblock }}
+
+{{ block content }}
+
+{% load otree %}
+
+{{ formfields }}
+
+<p>This is the <strong>exploration phase</strong>. You can freely sample decks to learn how they work. Your choices in this phase will <strong>not</strong> affect your final performance.</p>
+
+{% if player.time_pressure %}
+<p><strong>Time elapsed:</strong> <span id="timer">0</span> seconds</p>
+<p><strong>Penalty:</strong> <span id="penalty">0</span> points</p>
+<p><strong>Cumulative Payoff:</strong> <span id="cum_payoff">3000</span> points</p>
+{% endif %}
+
+<div class="container">
+    <table class="table">
+        <colgroup>
+            <col style="width: 50%" />
+            <col style="width: 50%" />
+        </colgroup>
+        <tr>
+            <td>Last card reward</td>
+            <th id="reward" style="color: green"></th>
+        </tr>
+        <tr>
+            <td>Last card cost</td>
+            <th id="cost" style="color: red"></th>
+        </tr>
+    </table>
+
+    <div class="row">
+        {% for letter in 'ABCD' %}
+        <div class="col">
+            <button type="button" onclick="selectDeck(this)" value="{{ letter }}" class="btn-card">
+                <div class="card" style="width: 10rem; height: 14rem">
+                    <div class="card-body">
+                        <h2 class="card-title">Deck</h2>
+                        <h1 class="card-title">{{ letter }}</h1>
+                    </div>
+                </div>
+            </button>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<script>
+    let buttons = document.getElementsByClassName('btn-card');
+    let msgCost = document.getElementById('cost');
+    let msgReward = document.getElementById('reward');
+
+    {% if player.time_pressure %}
+    let timerDisplay = document.getElementById('timer');
+    let penaltyDisplay = document.getElementById('penalty');
+    let cumPayoffDisplay = document.getElementById('cum_payoff');
+
+    let startTime = Date.now();
+
+    // Poll the server every second for the latest penalty and cumulative payoff
+    let timerInterval = setInterval(() => {
+        let elapsed = Math.floor((Date.now() - startTime) / 1000);
+        timerDisplay.textContent = elapsed;
+        liveSend({});
+    }, 1000);
+    {% endif %}
+
+    function selectDeck(btn) {
+        liveSend({ letter: btn.value });
+        for (let b of buttons) {
+            b.disabled = true;
+        }
+    }
+
+    function liveRecv(data) {
+        if ('finished' in data) {
+            {% if player.time_pressure %}
+            clearInterval(timerInterval);
+            {% endif %}
+            document.getElementById('form').submit();
+            return;
+        }
+
+        if ('reward' in data) {
+            let cost = data.cost;
+            let reward = data.reward;
+            msgReward.innerHTML = cu(reward);
+            msgCost.innerHTML = cost === 0 ? '' : cu(cost);
+        }
+
+        if (data.phase_switched) {
+            console.log("🚨 Exploration ended. Reloading page for performance...");
+            {% if player.time_pressure %}
+            clearInterval(timerInterval);
+            {% endif %}
+            document.getElementById('form').submit();
+            return;
+        }
+
+        if (data.penalty !== undefined) {
+            penaltyDisplay.textContent = data.penalty;
+        }
+
+        if (data.cum_payoff !== undefined) {
+            cumPayoffDisplay.textContent = data.cum_payoff;
+        }
+
+        for (let b of buttons) {
+            b.disabled = false;
+        }
+    }
+
+    function cu(amount) {
+        return `${amount} points`;
+    }
+
+    document.addEventListener("DOMContentLoaded", function () {
+        console.log("🚀 DOM fully loaded. Sending initial liveSend...");
+        liveSend({});
+    });
+
+    document.addEventListener("keydown", function (event) {
+        if (event.code === "Space") {
+            console.log("⏩ Spacebar pressed: ending exploration phase.");
+            {% if player.time_pressure %}
+            clearInterval(timerInterval);
+            liveSend({ end_exploration: true });
+            {% else %}
+            liveSend({ end_exploration: true });
+            {% endif %}
+        }
+    });
+</script>
+
+
+
+
+
+{{ endblock }}

@@ -1,0 +1,102 @@
+{{ extends 'global/Page.html' }}
+{{ block title }}Make your choices!{{ endblock }}
+
+{{ block content }}
+
+{% load otree static %}
+
+<p>Your choices in this phase will count toward your final score.</p>
+<p><strong>Your total payoff:</strong> <span id="cum_payoff">0 points</span></p>
+
+{% if player.time_pressure %}
+<p><strong>Time elapsed:</strong> <span id="timer">0</span> seconds</p>
+{% endif %}
+
+<form id="form" method="post">
+    {{ formfields }}
+
+    <table class="table">
+        <tr>
+            <td>Last card reward</td>
+            <td id="reward" style="color: green"></td>
+        </tr>
+        <tr>
+            <td>Last card cost</td>
+            <td id="cost" style="color: red"></td>
+        </tr>
+    </table>
+
+    <div class="row">
+        {% for letter in 'ABCD' %}
+        <div class="col">
+            <button type="button" onclick="selectDeck(this)" value="{{ letter }}" class="btn-card">
+                <div class="card" style="width: 10rem; height: 14rem">
+                    <div class="card-body">
+                        <h2 class="card-title">Deck</h2>
+                        <h1 class="card-title">{{ letter }}</h1>
+                    </div>
+                </div>
+            </button>
+        </div>
+        {% endfor %}
+    </div>
+</form>
+
+<script>
+    let buttons = document.getElementsByClassName('btn-card');
+    let msgCost = document.getElementById('cost');
+    let msgReward = document.getElementById('reward');
+    let msgCumPayoff = document.getElementById('cum_payoff');
+
+    {% if player.time_pressure %}
+    let timerDisplay = document.getElementById('timer');
+    let startTime = Date.now();
+    let timerInterval = setInterval(() => {
+        let elapsed = Math.floor((Date.now() - startTime) / 1000);
+        timerDisplay.textContent = elapsed;
+    }, 1000);
+    {% endif %}
+
+    function selectDeck(btn) {
+        console.log('🕹️ Sending deck choice:', btn.value);
+        liveSend({ letter: btn.value });
+        for (let b of buttons) b.disabled = true;
+    }
+
+    function liveRecv(data) {
+        console.log('📨 liveRecv got:', data);
+
+        if (data.finished) {
+            {% if player.time_pressure %}
+            clearInterval(timerInterval);
+            {% endif %}
+            console.log('✅ Trials complete — submitting form');
+            document.getElementById('form').submit();
+            return;
+        }
+
+        if ('reward' in data && msgReward && msgCost) {
+            msgReward.innerHTML = cu(data.reward);
+            msgCost.innerHTML = data.cost === 0 ? '' : cu(data.cost);
+        }
+
+        if ('cum_payoff' in data && msgCumPayoff) {
+            msgCumPayoff.innerHTML = cu(data.cum_payoff);
+        }
+
+        for (let b of buttons) b.disabled = false;
+    }
+
+    function cu(amount) {
+        return `${amount} points`;
+    }
+
+    document.addEventListener("DOMContentLoaded", function () {
+        console.log("🚀 DOM ready — sending initial liveSend");
+        liveSend({});
+    });
+</script>
+
+
+
+{{ endblock }}

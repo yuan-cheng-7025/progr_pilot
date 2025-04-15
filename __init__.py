@@ -85,142 +85,173 @@ def live_method(player: Player, data):
     participant = player.participant
     import time
     import json
-    
+
     my_id = player.id_in_group
     print(f"[LIVE] Player {my_id} sent data: {data}")
-    
-    # === EXPLORATION PHASE ===
+
+# === EXPLORATION PHASE ===
     if player.in_exploration_phase:
         if player.field_maybe_none('start_time') is None:
             player.start_time = time.time()
             player.participant.vars['exploration_temp_log'] = []
             print(f"[LIVE] Player {my_id} start_time initialized to {player.start_time}.")
-    
+
         player.exploration_duration = time.time() - player.start_time
         penalty = round(50 * player.exploration_duration)
         cum_payoff = max(3000 - penalty, 0)
-    
+
         log_entry = dict(
             timestamp=round(time.time(), 2),
             exploration_duration=round(player.exploration_duration, 2),
             penalty=penalty,
             cum_payoff=cum_payoff
         )
-        player.participant.vars['exploration_temp_log'].append(log_entry)
-    
-        print(f"[LIVE] Player {my_id} - Exploration Duration: {player.exploration_duration:.2f}s, Penalty: {penalty}, Cum_Payoff: {cum_payoff}")
-    
-        if 'letter' not in data and not data.get('end_exploration'):
-            return {my_id: dict(
-                exploration=True,
-                exploration_duration=round(player.exploration_duration, 2),
-                penalty=penalty,
-                cum_payoff=cum_payoff
-            )}
-    
-    # === END OF EXPLORATION PHASE ===
-    if data.get('end_exploration'):
-        print(f"[LIVE] Player {my_id} pressed SPACE → ending exploration phase.")
-        player.in_exploration_phase = False
-        player.num_trials = 0
-    
-        if player.field_maybe_none('start_time'):
-            player.exploration_duration = time.time() - player.start_time
-            print(f"[LIVE] Player {my_id} spent {player.exploration_duration:.2f} seconds in exploration.")
-        else:
-            player.exploration_duration = 0
-            print(f"[ERROR] Player {my_id} had no start_time logged.")
-    
-        player.exploration_log = json.dumps(player.participant.vars.get('exploration_temp_log', []))
-    
-        penalty = round(50 * player.exploration_duration)
-        player.performance_starting_payoff = max(3000 - penalty, 0)
-        player.payoff = player.performance_starting_payoff
-    
-        player.participant.vars['performance_temp_log'] = []
-    
-        print(f"[LIVE] Player {my_id} starting performance phase with payoff: {player.payoff}")
-    
-        return {my_id: dict(
-            phase_switched=True,
-            exploration_duration=round(player.exploration_duration, 2),
-            penalty=penalty
-        )}
-    
-    # === CHECK IF FINISHED ===
-    if player.num_trials == C.NUM_TRIALS:
-        print(f"[LIVE] Player {my_id} finished all trials.")
-        if 'performance_temp_log' in player.participant.vars:
-            player.performance_log = json.dumps(player.participant.vars['performance_temp_log'])
-        return {my_id: dict(finished=True)}
-    
-    # === CARD SELECTION ===
-    resp = {}
-    if 'letter' in data:
-        letter = data['letter']
-        print(f"[LIVE] Player {my_id} selected letter: {letter}")
-    
-        try:
-            deck = player.deck_layout.index(letter)
-            field_name = f'num{deck}'
-            cur_count = getattr(player, field_name)
-            reward = C.REWARDS[deck]
-            cost = session.vars['iowa_costs'][deck][cur_count]
-            payoff = reward - cost
-    
-            setattr(player, field_name, cur_count + 1)
-            player.num_trials += 1
-    
-            if player.in_exploration_phase:
-                print(f"[EXPLORATION] Player {my_id} drew from deck {letter}. Not counted toward payoff.")
+    player.participant.vars['exploration_temp_log'].append(log_entry)
+
+    # --- Rank calculation for competition condition
+    if player.competition:
+        all_scores = []
+        for p in player.group.get_players():
+            if p.in_exploration_phase:
+                if p.field_maybe_none('start_time') is not None:
+                    duration = time.time() - p.start_time
+                    temp_penalty = round(50 * duration)
+                    temp_cum_payoff = max(3000 - temp_penalty, 0)
+                    all_scores.append((p.id_in_group, temp_cum_payoff))
+                else:
+                    all_scores.append((p.id_in_group, 3000))
             else:
-                player.payoff += payoff
-    
-                # 💡 FIX: converted Currency to float before logging
-                player.participant.vars['performance_temp_log'].append(dict(
-                    timestamp=round(time.time(), 2),
-                    letter=letter,
-                    deck=deck,
-                    reward=float(reward),   # 💡 fix
-                    cost=float(cost),       # 💡 fix
-                    payoff=float(player.payoff),  # 💡 fix
-                    num_trials=player.num_trials
-                ))
-    
-            penalty = round(50 * player.exploration_duration)
-            cum_payoff = max(3000 - penalty, 0) if player.in_exploration_phase else float(player.payoff)  # 💡 fix
-    
-            resp.update(
-                cost=float(cost),     # 💡 fix
-                reward=float(reward), # 💡 fix
-                cum_payoff=cum_payoff,
-                num_trials=player.num_trials,
-                exploration=player.in_exploration_phase,
-                exploration_duration=round(player.exploration_duration, 2),
-                penalty=penalty if player.in_exploration_phase else 0
-            )
-    
-            print(f"[LIVE] Player {my_id} - Reward: {reward}, Cost: {cost}, Payoff: {payoff}")
-            print(f"[LIVE] Trials: {player.num_trials}, Cumulative Payoff: {resp['cum_payoff']}")
-    
-        except Exception as e:
-            print(f"[ERROR] Processing player {my_id}: {e}")
-            resp.update(error=str(e))
-    
-    # === FINAL CHECK AGAIN ===
-    if player.num_trials == C.NUM_TRIALS:
-        print(f"[LIVE] Player {my_id} finished all trials.")
-        resp.update(finished=True)
-        if 'performance_temp_log' in player.participant.vars:
-            player.performance_log = json.dumps(player.participant.vars['performance_temp_log'])
-    
-    print(f"[LIVE] Sending back to {my_id}: {resp}")
-    return {my_id: resp}
-    
-    
-    
-    
-    
+                all_scores.append((p.id_in_group, p.performance_starting_payoff))
+
+        ranked = sorted(all_scores, key=lambda x: x[1], reverse=True)
+        scoreboard = [{ 'id': pid, 'payoff': s, 'rank': i+1 } for i, (pid, s) in enumerate(ranked)]
+    else:
+        scoreboard = None
+
+    print(f"[LIVE] Player {my_id} - Exploration Duration: {player.exploration_duration:.2f}s, Penalty: {penalty}, Cum_Payoff: {cum_payoff}")
+
+    if 'letter' not in data and not data.get('end_exploration'):
+        return {my_id: dict(
+            exploration=True,
+            exploration_duration=round(player.exploration_duration, 2),
+            penalty=penalty,
+            cum_payoff=cum_payoff,
+            scoreboard=scoreboard
+        )}
+
+# === END OF EXPLORATION PHASE ===
+if data.get('end_exploration'):
+    print(f"[LIVE] Player {my_id} pressed SPACE → ending exploration phase.")
+    player.in_exploration_phase = False
+    player.num_trials = 0
+
+    if player.field_maybe_none('start_time'):
+        player.exploration_duration = time.time() - player.start_time
+        print(f"[LIVE] Player {my_id} spent {player.exploration_duration:.2f} seconds in exploration.")
+    else:
+        player.exploration_duration = 0
+        print(f"[ERROR] Player {my_id} had no start_time logged.")
+
+    player.exploration_log = json.dumps(player.participant.vars.get('exploration_temp_log', []))
+    penalty = round(50 * player.exploration_duration)
+    player.performance_starting_payoff = max(3000 - penalty, 0)
+    player.payoff = player.performance_starting_payoff
+    player.participant.vars['performance_temp_log'] = []
+
+    print(f"[LIVE] Player {my_id} starting performance phase with payoff: {player.payoff}")
+    return {my_id: dict(
+        phase_switched=True,
+        exploration_duration=round(player.exploration_duration, 2),
+        penalty=penalty
+    )}
+
+# === CHECK IF FINISHED ===
+if player.num_trials == C.NUM_TRIALS:
+    print(f"[LIVE] Player {my_id} finished all trials.")
+    if 'performance_temp_log' in player.participant.vars:
+        player.performance_log = json.dumps(player.participant.vars['performance_temp_log'])
+    return {my_id: dict(finished=True)}
+
+# === CARD SELECTION ===
+resp = {}
+if 'letter' in data:
+    letter = data['letter']
+    print(f"[LIVE] Player {my_id} selected letter: {letter}")
+
+    try:
+        deck = player.deck_layout.index(letter)
+        field_name = f'num{deck}'
+        cur_count = getattr(player, field_name)
+        reward = C.REWARDS[deck]
+        cost = session.vars['iowa_costs'][deck][cur_count]
+        payoff = reward - cost
+
+        setattr(player, field_name, cur_count + 1)
+        player.num_trials += 1
+
+        if player.in_exploration_phase:
+            print(f"[EXPLORATION] Player {my_id} drew from deck {letter}. Not counted toward payoff.")
+        else:
+            player.payoff += payoff
+            player.participant.vars['performance_temp_log'].append(dict(
+                timestamp=round(time.time(), 2),
+                letter=letter,
+                deck=deck,
+                reward=float(reward),
+                cost=float(cost),
+                payoff=float(player.payoff),
+                num_trials=player.num_trials
+            ))
+
+        penalty = round(50 * player.exploration_duration)
+        cum_payoff = max(3000 - penalty, 0) if player.in_exploration_phase else float(player.payoff)
+
+        # Compute live ranks for competition treatment
+        if player.competition:
+            all_scores = []
+            for p in player.group.get_players():
+                if p.in_exploration_phase:
+                    if p.field_maybe_none('start_time') is not None:
+                        duration = time.time() - p.start_time
+                        temp_penalty = round(50 * duration)
+                        temp_cum_payoff = max(3000 - temp_penalty, 0)
+                        all_scores.append((p.id_in_group, temp_cum_payoff))
+                    else:
+                        all_scores.append((p.id_in_group, 3000))
+                else:
+                    all_scores.append((p.id_in_group, float(p.payoff)))
+            ranked = sorted(all_scores, key=lambda x: x[1], reverse=True)
+            scoreboard = [{ 'id': pid, 'payoff': s, 'rank': i+1 } for i, (pid, s) in enumerate(ranked)]
+        else:
+            scoreboard = None
+
+        resp.update(
+            cost=float(cost),
+            reward=float(reward),
+            cum_payoff=cum_payoff,
+            num_trials=player.num_trials,
+            exploration=player.in_exploration_phase,
+            exploration_duration=round(player.exploration_duration, 2),
+            penalty=penalty if player.in_exploration_phase else 0,
+            scoreboard=scoreboard
+        )
+
+        print(f"[LIVE] Player {my_id} - Reward: {reward}, Cost: {cost}, Payoff: {payoff}")
+        print(f"[LIVE] Trials: {player.num_trials}, Cumulative Payoff: {resp['cum_payoff']}")
+
+    except Exception as e:
+        print(f"[ERROR] Processing player {my_id}: {e}")
+        resp.update(error=str(e))
+
+if player.num_trials == C.NUM_TRIALS:
+    print(f"[LIVE] Player {my_id} finished all trials.")
+    resp.update(finished=True)
+    if 'performance_temp_log' in player.participant.vars:
+        player.performance_log = json.dumps(player.participant.vars['performance_temp_log'])
+
+print(f"[LIVE] Sending back to {my_id}: {resp}")
+return {my_id: resp}
+
 class IntroductionPage(Page):
     form_model = 'player'
 class ExplorationPhrase(Page):

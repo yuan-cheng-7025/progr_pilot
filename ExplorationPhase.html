@@ -7,12 +7,23 @@
 
 {{ formfields }}
 
-<p>This is the <strong>exploration phase</strong>. You can freely sample decks to learn how they work. Your choices in this phase will <strong>not</strong> affect your final performance.</p>
+<p>This is the <strong>exploration phase</strong>. You can freely sample decks to learn how they work.
+Your choices in this phase will <strong>not</strong> affect your final performance.</p>
 
 {% if player.time_pressure %}
 <p><strong>Time elapsed:</strong> <span id="timer">0</span> seconds</p>
 <p><strong>Penalty:</strong> <span id="penalty">0</span> points</p>
 <p><strong>Cumulative Payoff:</strong> <span id="cum_payoff">3000</span> points</p>
+{% endif %}
+
+{% if player.competition %}
+<div id="scoreboard-container">
+    <h4>🏆 Group Scoreboard</h4>
+    <table class="table table-sm" id="scoreboard">
+        <thead><tr><th>Rank</th><th>Player</th><th>Payoff</th></tr></thead>
+        <tbody></tbody>
+    </table>
+</div>
 {% endif %}
 
 <div class="container">
@@ -56,9 +67,7 @@
     let timerDisplay = document.getElementById('timer');
     let penaltyDisplay = document.getElementById('penalty');
     let cumPayoffDisplay = document.getElementById('cum_payoff');
-
     let startTime = Date.now();
-
     let timerInterval = setInterval(() => {
         let elapsed = Math.floor((Date.now() - startTime) / 1000);
         timerDisplay.textContent = elapsed;
@@ -74,10 +83,16 @@
     }
 
     function liveRecv(data) {
-        if ('finished' in data) {
-            {% if player.time_pressure %}
-            clearInterval(timerInterval);
-            {% endif %}
+
+        if (data.phase_switched) {
+            console.log("🚨 Exploration ended. Reloading page for performance...");
+            {% if player.time_pressure %} clearInterval(timerInterval); {% endif %}
+            document.getElementById('form').submit();
+            return;
+        }
+
+        if (data.finished) {
+            {% if player.time_pressure %} clearInterval(timerInterval); {% endif %}
             document.getElementById('form').submit();
             return;
         }
@@ -89,21 +104,16 @@
             msgCost.innerHTML = cost === 0 ? '' : cu(cost);
         }
 
-        if (data.phase_switched) {
-            console.log("🚨 Exploration ended. Reloading page for performance...");
-            {% if player.time_pressure %}
-            clearInterval(timerInterval);
-            {% endif %}
-            document.getElementById('form').submit();
-            return;
-        }
-
         if (data.penalty !== undefined) {
             penaltyDisplay.textContent = data.penalty;
         }
 
         if (data.cum_payoff !== undefined) {
             cumPayoffDisplay.textContent = data.cum_payoff;
+        }
+
+        if (data.scoreboard !== undefined && data.scoreboard !== null) {
+            updateScoreboard(data.scoreboard);
         }
 
         for (let b of buttons) {
@@ -115,53 +125,52 @@
         return `${amount} points`;
     }
 
+    {% if player.competition %}
+    function updateScoreboard(scores) {
+        let tbody = document.querySelector('#scoreboard tbody');
+        tbody.innerHTML = '';
+        for (let entry of scores) {
+            let row = `<tr>
+                <td>${entry.rank}</td>
+                <td>Player ${entry.id}</td>
+                <td>${entry.payoff}</td>
+            </tr>`;
+            tbody.innerHTML += row;
+        }
+    }
+    {% endif %}
+
     document.addEventListener("DOMContentLoaded", function () {
         console.log("🚀 DOM fully loaded. Sending initial liveSend...");
         liveSend({});
     });
 
-    // --- Keyboard handling ---
     document.addEventListener("keydown", function (event) {
 
-        // Spacebar: ends exploration
         if (event.code === "Space") {
             console.log("⏩ Spacebar pressed: ending exploration phase.");
-            {% if player.time_pressure %}
-            clearInterval(timerInterval);
-            {% endif %}
+            {% if player.time_pressure %} clearInterval(timerInterval); {% endif %}
             liveSend({ end_exploration: true });
             return;
         }
 
-        // Map keys to deck letters
-        let keyMap = {
-            'KeyS': 'A',
-            'KeyF': 'B',
-            'KeyJ': 'C',
-            'KeyL': 'D'
-        };
-
+        let keyMap = { 'KeyS': 'A', 'KeyF': 'B', 'KeyJ': 'C', 'KeyL': 'D' };
         let letter = keyMap[event.code];
+
         if (letter) {
             console.log(`🎴 Key "${event.key}" pressed, selecting deck ${letter}`);
             liveSend({ letter: letter });
 
-            // Disable buttons to prevent double inputs while server responds
-            for (let b of buttons) {
-                b.disabled = true;
-            }
-
-            // Highlight the selected deck visually
+            for (let b of buttons) { b.disabled = true; }
             for (let b of buttons) {
                 if (b.value === letter) {
                     b.style.outline = "4px solid yellow";
-                    setTimeout(() => b.style.outline = "", 200);  // remove highlight after 200ms
+                    setTimeout(() => b.style.outline = "", 200);
                 }
             }
         }
     });
 </script>
-
 
 
 

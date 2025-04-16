@@ -3,6 +3,11 @@
 
 {{ block content }}
 
+{% if timeout_message %}
+    <div class="alert alert-warning">
+        {{ timeout_message }}
+    </div>
+{% else %}
 <p>In this task, you will choose cards from four decks: A, B, C, and D.</p>
 <p>Each card gives you a reward, but also comes with a cost.</p>
 <p>Your goal is to maximize your total payoff.</p>
@@ -22,5 +27,7 @@
     Press the Next Butoon to proceed to the game
 </p>
 {{ next_button }}
+{% endif %}
 
 {{ endblock }}
+

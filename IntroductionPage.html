@@ -3,31 +3,64 @@
 
 {{ block content }}
 
+{% load static %}
+
 {% if timeout_message %}
     <div class="alert alert-warning">
         {{ timeout_message }}
     </div>
 {% else %}
-<p>In this task, you will choose cards from four decks: A, B, C, and D.</p>
-<p>Each card gives you a reward, but also comes with a cost.</p>
-<p>Your goal is to maximize your total payoff.</p>
 
-{% if player.time_pressure and player.competition %}
-    <p>You will be penalized for additional sampling. A timer will start when the game begins. People with the highest rank will receive addtional payment at the end of the experiment.</p>
+    <p>
+        In this task, you will select cards from four decks: <strong>A</strong>, <strong>B</strong>, <strong>C</strong>, and <strong>D</strong>  
+        by pressing the corresponding keys on your keyboard.
+    </p>
 
-{% elif player.time_pressure %}
-    <p>You will be penalized for additional sampling. A timer will start when the game begins.</p>
+    <p>
+        Each card gives you a reward, but also comes with a cost. Your goal is to maximize your total payoff.
+    </p>
 
-{% elif player.competition %}
-    <p>People with the highest rank will receive addtional payment at the end of the experiment.</p>
+    <p>
+        The game has two phases:
+    </p>
+    <ul>
+        <li><strong>Exploration Phase:</strong> You are free to explore the decks and learn about the rewards and costs without affecting your final performance. Feedback will be shown after each selection.</li>
+        <li><strong>Decision Phase:</strong> Each selection counts towards your final performance, which determines your bonus payment. Use your exploration knowledge to maximize your payoff!</li>
+    </ul>
+    {% if player.time_pressure and player.competition %}
+        <p>In this experiment, there are <strong>two additional rules</strong>:</p>
+        <ul>
+            <li>A timer will start when the game begins. The longer you take, the more points will be deducted from your initial endowment.</li>
+            <li>You will be ranked based on your performance within your group. People with the highest score in their group at the end of the game will receive an additional bonus payment.</li>
+        </ul>
 
-{% else %}
+    {% elif player.time_pressure %}
+        <p>In this experiment, you will be <strong> penalized </strong>for each second spent on exploration:</p>
+        <ul>
+            <li>A timer will start when the game begins. Same as a calculator that shows the amount of penalty you will receive and the current endowmeng you have as time passes. The longer you take, the more points will be deducted.</li>
+        </ul>
+
+    {% elif player.competition %}
+       <p>In this experiment, you will be <strong> in competition </strong>with other group members:</p>
+        <ul>
+            <li>Your will see a scoreboard updating your score and other players' scores as you move along in the experiment. People with the highest rank in their group will receive additional bonus. </li>
+        </ul>
+    {% endif %}
+    <p><strong>Keyboard Assignments:</strong></p>
+
+    <div style="text-align: center;">
+        <img src="https://www.otreehub.com/studio_api/1/images/32ab1f35-0fb3-4558-bd45-a7435f88e907/download/" 
+             alt="Keyboard Assignment Diagram" 
+             style="max-width: 100%; height: auto;">
+    </div>
+
+    <p>
+        When you are ready, click the button below to start the game.
+    </p>
+
+    {{ next_button }}
+
 {% endif %}
-<p>
-    Press the Next Butoon to proceed to the game
-</p>
-{{ next_button }}
-{% endif %}
 
-{{ endblock }}
+{% endblock %}
 

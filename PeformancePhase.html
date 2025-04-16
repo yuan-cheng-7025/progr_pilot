@@ -35,7 +35,7 @@
     <div class="row">
         {% for letter in 'ABCD' %}
         <div class="col">
-            <button type="button" onclick="selectDeck(this)" value="{{ letter }}" class="btn-card">
+            <button type="button" value="{{ letter }}" class="btn-card">
                 <div class="card" style="width: 10rem; height: 14rem">
                     <div class="card-body">
                         <h2 class="card-title">Deck</h2>
@@ -50,24 +50,22 @@
 
 <style>
     .highlight-player {
-        background-color: #ffe599;  /* Light yellow */
+        background-color: #ffe599;
         font-weight: bold;
     }
 </style>
 
 <script>
-    const myID = {{ player.id_in_group }};  // Current player's ID
-
+    const myID = {{ player.id_in_group }};
     let buttons = document.getElementsByClassName('btn-card');
+    // Disable buttons on load to prevent clicking
+    for (let b of buttons) {
+        b.disabled = true;
+    }
+
     let msgCost = document.getElementById('cost');
     let msgReward = document.getElementById('reward');
     let msgCumPayoff = document.getElementById('cum_payoff');
-
-    function selectDeck(btn) {
-        console.log('🕹️ Sending deck choice:', btn.value);
-        liveSend({ letter: btn.value });
-        for (let b of buttons) b.disabled = true;
-    }
 
     function liveRecv(data) {
         console.log('📨 liveRecv got:', data);

@@ -45,7 +45,7 @@ Your choices in this phase will <strong>not</strong> affect your final performan
     <div class="row">
         {% for letter in 'ABCD' %}
         <div class="col">
-            <button type="button" onclick="selectDeck(this)" value="{{ letter }}" class="btn-card">
+            <button type="button" value="{{ letter }}" class="btn-card">
                 <div class="card" style="width: 10rem; height: 14rem">
                     <div class="card-body">
                         <h2 class="card-title">Deck</h2>
@@ -60,14 +60,13 @@ Your choices in this phase will <strong>not</strong> affect your final performan
 
 <style>
     .highlight-player {
-        background-color: #ffe599; /* light yellow highlight */
+        background-color: #ffe599;
         font-weight: bold;
     }
 </style>
 
 <script>
-    const myID = {{ player.id_in_group }};  // Current player ID
-
+    const myID = {{ player.id_in_group }};
     let buttons = document.getElementsByClassName('btn-card');
     let msgCost = document.getElementById('cost');
     let msgReward = document.getElementById('reward');
@@ -84,13 +83,7 @@ Your choices in this phase will <strong>not</strong> affect your final performan
     }, 1000);
     {% endif %}
 
-    function selectDeck(btn) {
-        liveSend({ letter: btn.value });
-        for (let b of buttons) { b.disabled = true; }
-    }
-
     function liveRecv(data) {
-
         if (data.phase_switched) {
             console.log("🚨 Exploration ended. Reloading page for performance...");
             {% if player.time_pressure %} clearInterval(timerInterval); {% endif %}
@@ -153,7 +146,6 @@ Your choices in this phase will <strong>not</strong> affect your final performan
     });
 
     document.addEventListener("keydown", function (event) {
-
         if (event.code === "Space") {
             console.log("⏩ Spacebar pressed: ending exploration phase.");
             {% if player.time_pressure %} clearInterval(timerInterval); {% endif %}
@@ -178,5 +170,6 @@ Your choices in this phase will <strong>not</strong> affect your final performan
         }
     });
 </script>
+
 
 {{ endblock }}

@@ -1,0 +1,208 @@
+{{ extends 'global/Page.html' }}
+{{ block title }}Training Phase{{ endblock }}
+
+{{ block content }}
+
+{% load otree %}
+
+{{ formfields }}
+<div id="training-container">
+    <p>
+        This is a practice round. You are free to explore the decks by pressing corresponding keys on your keyboard as illustrated in the picture below.
+        Try selecting cards from the decks to see how rewards and costs work!
+        <br>
+        When you feel you're done with exploration, press the spacebar on your keyboard to end the exploration phase. Outcomes selected during this phase will not be counted into your final outcome.
+        <br>
+        On exploration phase, you will be able to see the rewards and costs of the selected deck. Please make full use of that feedback information for higher cumulative points in the decision phase.
+        <br>
+        For this training session, you will need to identify the outcome with the best/highest reward before you can proceed to the experiment.
+    </p>
+
+    <!-- Timer, Penalty, Payoff: Always show when time_pressure is True -->
+{% if player.time_pressure %}
+<div id="training-status">
+    <p><strong>Time elapsed:</strong> <span id="timer">0</span> seconds</p>
+    <p><strong>Penalty:</strong> <span id="penalty">0</span> points</p>
+    <p><strong>Cumulative Payoff:</strong> <span id="cum_payoff">3000</span> points</p>
+</div>
+{% endif %}
+    
+    <!-- Scoreboard: Only visible if competition is True -->
+    {% if player.competition %}
+    <div id="scoreboard-container">
+        <h4>🏆 Group Scoreboard</h4>
+        <table class="table table-sm" id="scoreboard">
+            <thead><tr><th>Rank</th><th>Player</th><th>Payoff</th></tr></thead>
+            <tbody></tbody>
+        </table>
+    </div>
+    {% endif %}
+
+    <!-- Start Training Button -->
+    <div id="start-training-container">
+        <button type="button" id="start-training-button" class="btn btn-primary btn-lg">Start Training</button>
+    </div>
+
+    <!-- Card UI: Hidden Before Training Starts -->
+    <div id="card-container" class="container" style="display: none;">
+        <table class="table">
+            <colgroup>
+                <col style="width: 50%" />
+                <col style="width: 50%" />
+            </colgroup>
+            <tr>
+                <td>Last card reward</td>
+                <th id="reward" style="color: green"></th>
+            </tr>
+            <tr>
+                <td>Last card cost</td>
+                <th id="cost" style="color: red"></th>
+            </tr>
+        </table>
+
+        <div class="row">
+            {% for letter in 'ABCD' %}
+            <div class="col">
+                <button type="button" value="{{ letter }}" class="btn-card" disabled>
+                    <div class="card" style="width: 10rem; height: 14rem">
+                        <div class="card-body">
+                            <h2 class="card-title">Deck</h2>
+                            <h1 class="card-title">{{ letter }}</h1>
+                        </div>
+                    </div>
+                </button>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<style>
+    .highlight-player {
+        background-color: #ffe599;
+        font-weight: bold;
+    }
+</style>
+
+<script>
+    const myID = {{ player.id_in_group }};
+    let buttons = document.getElementsByClassName('btn-card');
+    let msgCost = document.getElementById('cost');
+    let msgReward = document.getElementById('reward');
+
+    let trainingStarted = false;
+    let timerInterval = null;
+
+    {% if player.time_pressure %}
+    let timerDisplay = document.getElementById('timer');
+    let penaltyDisplay = document.getElementById('penalty');
+    let cumPayoffDisplay = document.getElementById('cum_payoff');
+    {% endif %}
+
+    document.getElementById('start-training-button').addEventListener('click', function() {
+        trainingStarted = true;
+
+        // Hide start button, show card area
+        document.getElementById('start-training-container').style.display = 'none';
+        document.getElementById('card-container').style.display = '';
+
+        // Enable deck buttons
+        for (let b of buttons) { b.disabled = false; }
+
+        {% if player.time_pressure %}
+        let startTime = Date.now();
+        timerInterval = setInterval(() => {
+            let elapsed = Math.floor((Date.now() - startTime) / 1000);
+            timerDisplay.textContent = elapsed;
+            liveSend({});
+        }, 1000);
+        {% endif %}
+
+        // Notify server training has started
+        liveSend({ start_training: true });
+    });
+
+    function liveRecv(data) {
+        if (!trainingStarted) return;
+
+        if (data.training_passed || data.finished) {
+            console.log("🚨 Exploration ended. Submitting form...");
+            {% if player.time_pressure %} clearInterval(timerInterval); {% endif %}
+            document.getElementById('form').submit();
+            return;
+        }
+
+        if ('reward' in data) {
+            msgReward.innerHTML = cu(data.reward);
+            msgCost.innerHTML = data.cost === 0 ? '' : cu(data.cost);
+        }
+
+        if (data.penalty !== undefined) {
+            penaltyDisplay.textContent = data.penalty;
+        }
+
+        if (data.cum_payoff !== undefined) {
+            cumPayoffDisplay.textContent = data.cum_payoff;
+        }
+
+        if (data.scoreboard !== undefined && data.scoreboard !== null) {
+            updateScoreboard(data.scoreboard);
+        }
+
+        for (let b of buttons) { b.disabled = false; }
+    }
+
+    function cu(amount) {
+        return `${amount} points`;
+    }
+
+    {% if player.competition %}
+    function updateScoreboard(scores) {
+        let tbody = document.querySelector('#scoreboard tbody');
+        tbody.innerHTML = '';
+
+        for (let entry of scores) {
+            let highlight = (entry.id === myID) ? ' class="highlight-player"' : '';
+            let row = `<tr${highlight}>
+                <td>${entry.rank}</td>
+                <td>Player ${entry.id}</td>
+                <td>${entry.payoff}</td>
+            </tr>`;
+            tbody.innerHTML += row;
+        }
+    }
+    {% endif %}
+
+    document.addEventListener("keydown", function (event) {
+        if (!trainingStarted) return;
+
+        if (event.code === "Space") {
+            console.log("⏩ Spacebar pressed: ending exploration phase.");
+            {% if player.time_pressure %} clearInterval(timerInterval); {% endif %}
+            liveSend({ end_exploration: true });
+            return;
+        }
+
+        let keyMap = { 'KeyS': 'A', 'KeyF': 'B', 'KeyJ': 'C', 'KeyL': 'D' };
+        let letter = keyMap[event.code];
+
+        if (letter) {
+            console.log(`🎴 Key "${event.key}" pressed, selecting deck ${letter}`);
+            liveSend({ letter: letter });
+
+            for (let b of buttons) { b.disabled = true; }
+            for (let b of buttons) {
+                if (b.value === letter) {
+                    b.style.outline = "4px solid yellow";
+                    setTimeout(() => b.style.outline = "", 200);
+                }
+            }
+        }
+    });
+
+    document.addEventListener("DOMContentLoaded", function () {
+        console.log("🚀 DOM loaded, waiting for training to start.");
+    });
+</script>
+
+{{ endblock }}

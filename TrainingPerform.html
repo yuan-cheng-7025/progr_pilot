@@ -1,0 +1,155 @@
+{{ extends 'global/Page.html' }}
+{{ block title }}Training session{{ endblock }}
+
+{{ block content }}
+
+{% load otree static %}
+
+<p>Your choices in this phase will count toward your final score.</p>
+<p><strong>Your total payoff:</strong> <span id="cum_payoff">0 points</span></p>
+
+{% if player.competition %}
+<div id="scoreboard-container">
+    <h4>🏆 Group Scoreboard</h4>
+    <table class="table table-sm" id="scoreboard">
+        <thead><tr><th>Rank</th><th>Player</th><th>Payoff</th></tr></thead>
+        <tbody></tbody>
+    </table>
+</div>
+{% endif %}
+
+<form id="form" method="post">
+    {{ formfields }}
+
+    <div class="row">
+        {% for letter in 'ABCD' %}
+        <div class="col">
+            <button type="button" value="{{ letter }}" class="btn-card">
+                <div class="card" style="width: 10rem; height: 14rem">
+                    <div class="card-body">
+                        <h2 class="card-title">Deck</h2>
+                        <h1 class="card-title">{{ letter }}</h1>
+                    </div>
+                </div>
+            </button>
+        </div>
+        {% endfor %}
+    </div>
+
+    <div class="form-group mt-3">
+        <label for="best_deck_answer">When you're ready: which deck is the best?</label>
+        <select id="best_deck_answer" class="form-control">
+            <option value="">Select deck</option>
+            <option value="A">A</option>
+            <option value="B">B</option>
+            <option value="C">C</option>
+            <option value="D">D</option>
+        </select>
+    </div>
+
+    <button id="end-training-button" type="button" class="btn btn-primary mt-2">End Training Session</button>
+</form>
+
+<style>
+    .highlight-player {
+        background-color: #ffe599;
+        font-weight: bold;
+    }
+</style>
+
+<script>
+    const myID = {{ player.id_in_group }};
+    let buttons = document.getElementsByClassName('btn-card');
+    let msgCumPayoff = document.getElementById('cum_payoff');
+
+    for (let b of buttons) {
+        b.disabled = true;
+    }
+
+    document.addEventListener("DOMContentLoaded", function () {
+        console.log("🚀 DOM ready — sending initial liveSend");
+        liveSend({});
+    });
+
+    document.addEventListener("keydown", function (event) {
+        let keyMap = {
+            'KeyS': 'A',
+            'KeyF': 'B',
+            'KeyJ': 'C',
+            'KeyL': 'D'
+        };
+        let letter = keyMap[event.code];
+        if (letter) {
+            console.log(`🎴 Key "${event.key}" pressed, selecting deck ${letter}`);
+            liveSend({ letter: letter });
+            for (let b of buttons) b.disabled = true;
+            for (let b of buttons) {
+                if (b.value === letter) {
+                    b.style.outline = "4px solid yellow";
+                    setTimeout(() => b.style.outline = "", 200);
+                }
+            }
+        }
+    });
+
+    document.getElementById('end-training-button').addEventListener('click', function () {
+        let answer = document.getElementById('best_deck_answer').value;
+        if (!answer) {
+            alert("Please select the best deck before ending the training session!");
+            return;
+        }
+        liveSend({
+            end_training: true,
+            best_deck_answer: answer
+        });
+    });
+
+    function liveRecv(data) {
+        console.log('📨 liveRecv got:', data);
+
+        if (data.training_complete) {
+            console.log('✅ Training complete — submitting form');
+            document.getElementById('form').submit();
+            return;
+        }
+
+        if (data.training_incorrect) {
+            alert(data.message || "Incorrect answer. Please re-explore the decks.");
+            location.reload();  // reloads back to exploration phase
+            return;
+        }
+
+        if ('reward' in data && 'cost' in data) {
+            // Reward/Cost feedback only for exploration phase.
+            alert(`Reward: ${data.reward}, Cost: ${data.cost}`);
+        }
+
+        if ('cum_payoff' in data && msgCumPayoff) {
+            msgCumPayoff.innerHTML = `${data.cum_payoff} points`;
+        }
+
+        if (data.scoreboard !== undefined && data.scoreboard !== null) {
+            updateScoreboard(data.scoreboard);
+        }
+
+        for (let b of buttons) b.disabled = false;
+    }
+
+    {% if player.competition %}
+    function updateScoreboard(scores) {
+        let tbody = document.querySelector('#scoreboard tbody');
+        tbody.innerHTML = '';
+        for (let entry of scores) {
+            let highlight = (entry.id === myID) ? ' class="highlight-player"' : '';
+            let row = `<tr${highlight}>
+                <td>${entry.rank}</td>
+                <td>Player ${entry.id}</td>
+                <td>${entry.payoff}</td>
+            </tr>`;
+            tbody.innerHTML += row;
+        }
+    }
+    {% endif %}
+</script>
+
+{{ endblock }}

@@ -59,7 +59,7 @@ def creating_session(subsession: Subsession):
     
         print(f"Player {player.id_in_subsession}: TP={time_pressure}, COMP={competition}, Deck={player.deck_layout}")
     
-    # === Grouping non-competition players immediately ===
+    # === Grouping non-competition players immediately (commented out for testing purpose) ===
     non_competition_players = [p for p in players if not p.competition]
     competition_players = [p for p in players if p.competition]
     
@@ -73,7 +73,7 @@ def creating_session(subsession: Subsession):
     full_group_matrix = non_competition_groups + competition_placeholders
     subsession.set_group_matrix(full_group_matrix)
     
-    
+ # !!! Comment out for testing purpose   
 def group_by_arrival_time_method(subsession: Subsession, waiting_players):
     import time
     PLAYERS_PER_GROUP = 5
@@ -100,7 +100,7 @@ def group_by_arrival_time_method(subsession: Subsession, waiting_players):
     return None  # Keep waiting
 class Group(BaseGroup):
     pass
-def after_all_player_arrive(group: Group):
+def after_all_player_arrive(group: Group): ## also commented out for testing
     for p in group.get_players():
             if p.participant.vars.get('grouping_failed'):
                 p.participant.vars['timeout_message'] = (
@@ -295,12 +295,16 @@ def live_method(player: Player, data):
     
     print(f"[LIVE] Sending back to {my_id}: {resp}")
     return {my_id: resp}
+
+# !!! Comment out for test purpose
 class GroupWait_Start(WaitPage):
     group_by_arrival_time = True
     after_all_players_arrive = after_all_player_arrive
     @staticmethod
     def is_displayed(player: Player):
         return player.competition  # only competition players wait here
+
+
 class IntroductionPage(Page):
     form_model = 'player'
     @staticmethod

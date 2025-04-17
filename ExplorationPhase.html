@@ -11,9 +11,11 @@
 Your choices in this phase will <strong>not</strong> affect your final performance.</p>
 
 {% if player.time_pressure %}
-<p><strong>Time elapsed:</strong> <span id="timer">0</span> seconds</p>
-<p><strong>Penalty:</strong> <span id="penalty">0</span> points</p>
-<p><strong>Cumulative Payoff:</strong> <span id="cum_payoff">3000</span> points</p>
+<div id="time-info">
+    <p><strong>Time elapsed:</strong> <span id="timer">0</span> seconds</p>
+    <p><strong>Penalty:</strong> <span id="penalty">0</span> points</p>
+    <p><strong>Cumulative Payoff:</strong> <span id="cum_payoff">3000</span> points</p>
+</div>
 {% endif %}
 
 {% if player.competition %}
@@ -28,18 +30,9 @@ Your choices in this phase will <strong>not</strong> affect your final performan
 
 <div class="container">
     <table class="table">
-        <colgroup>
-            <col style="width: 50%" />
-            <col style="width: 50%" />
-        </colgroup>
-        <tr>
-            <td>Last card reward</td>
-            <th id="reward" style="color: green"></th>
-        </tr>
-        <tr>
-            <td>Last card cost</td>
-            <th id="cost" style="color: red"></th>
-        </tr>
+        <colgroup><col style="width: 50%" /><col style="width: 50%" /></colgroup>
+        <tr><td>Last card reward</td><th id="reward" style="color: green"></th></tr>
+        <tr><td>Last card cost</td><th id="cost" style="color: red"></th></tr>
     </table>
 
     <div class="row">
@@ -84,37 +77,32 @@ Your choices in this phase will <strong>not</strong> affect your final performan
     {% endif %}
 
     function liveRecv(data) {
-        if (data.phase_switched) {
-            console.log("🚨 Exploration ended. Reloading page for performance...");
+        if (data.phase_switched || data.finished) {
+            console.log("🚨 Exploration ended. Reloading page...");
             {% if player.time_pressure %} clearInterval(timerInterval); {% endif %}
             document.getElementById('form').submit();
             return;
         }
 
-        if (data.finished) {
-            {% if player.time_pressure %} clearInterval(timerInterval); {% endif %}
-            document.getElementById('form').submit();
-            return;
+        if (data.reward !== undefined) {
+            msgReward.innerHTML = cu(data.reward);
+            msgCost.innerHTML = data.cost === 0 ? '' : cu(data.cost);
         }
 
-        if ('reward' in data) {
-            let cost = data.cost;
-            let reward = data.reward;
-            msgReward.innerHTML = cu(reward);
-            msgCost.innerHTML = cost === 0 ? '' : cu(cost);
-        }
-
+        {% if player.time_pressure %}
         if (data.penalty !== undefined) {
             penaltyDisplay.textContent = data.penalty;
         }
-
         if (data.cum_payoff !== undefined) {
             cumPayoffDisplay.textContent = data.cum_payoff;
         }
+        {% endif %}
 
+        {% if player.competition %}
         if (data.scoreboard !== undefined && data.scoreboard !== null) {
             updateScoreboard(data.scoreboard);
         }
+        {% endif %}
 
         for (let b of buttons) { b.disabled = false; }
     }
@@ -127,20 +115,18 @@ Your choices in this phase will <strong>not</strong> affect your final performan
     function updateScoreboard(scores) {
         let tbody = document.querySelector('#scoreboard tbody');
         tbody.innerHTML = '';
-
         for (let entry of scores) {
             let highlight = (entry.id === myID) ? ' class="highlight-player"' : '';
-            let row = `<tr${highlight}>
+            tbody.innerHTML += `<tr${highlight}>
                 <td>${entry.rank}</td>
                 <td>Player ${entry.id}</td>
                 <td>${entry.payoff}</td>
             </tr>`;
-            tbody.innerHTML += row;
         }
     }
     {% endif %}
 
-    document.addEventListener("DOMContentLoaded", function () {
+    document.addEventListener("DOMContentLoaded", () => {
         console.log("🚀 DOM fully loaded. Sending initial liveSend...");
         liveSend({});
     });
@@ -153,7 +139,7 @@ Your choices in this phase will <strong>not</strong> affect your final performan
             return;
         }
 
-        let keyMap = { 'KeyS': 'A', 'KeyF': 'B', 'KeyJ': 'C', 'KeyL': 'D' };
+        const keyMap = { 'KeyS': 'A', 'KeyF': 'B', 'KeyJ': 'C', 'KeyL': 'D' };
         let letter = keyMap[event.code];
 
         if (letter) {
@@ -171,5 +157,5 @@ Your choices in this phase will <strong>not</strong> affect your final performan
     });
 </script>
 
-
 {{ endblock }}
+

@@ -1,0 +1,6 @@
+after_all_player_arrive
+
+group_by_arrive_time == True
+
+def is_displayed(player):
+  return player.competition  # only competition players wait here

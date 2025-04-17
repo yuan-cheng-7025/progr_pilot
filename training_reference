@@ -1,0 +1,106 @@
+# === TRAINING PHASE ===
+if player.in_training:
+    # Participant clicks the "Start Training" button
+    if data.get('start_training'):
+        player.training_exploration = True
+        player.training_start_time = time.time()
+        player.participant.vars['training_temp_log'] = []
+        print(f"[LIVE] Player {my_id} started training at {player.training_start_time}.")
+        return {my_id: dict(training=True, training_duration=0.0)}
+
+    if player.field_maybe_none('training_start_time') is None:
+        print(f"[LIVE] Player {my_id} has not started training yet. Waiting for start.")
+        return {my_id: dict(training=True, waiting_for_start=True)}
+
+    training_duration = time.time() - player.training_start_time
+
+    if player.training_exploration:
+        if data.get('end_exploration'):
+            player.training_exploration = False
+            print(f"[LIVE] Player {my_id} ended exploration via SPACEBAR. Moving to PERFORMANCE sub-phase.")
+            return {my_id: dict(training_passed=True)}
+
+        if data.get('letter'):
+            letter = data['letter']
+            deck = player.deck_layout.index(letter)
+            reward = C.TRAINING_REWARDS[deck]
+            cost = C.TRAINING_COSTS[deck]
+            payoff = reward - cost
+
+            player.participant.vars['training_temp_log'].append(dict(
+                timestamp=round(time.time(), 2),
+                letter=letter,
+                deck=deck,
+                reward=float(reward),
+                cost=float(cost),
+                payoff=payoff
+            ))
+
+            print(f"[TRAINING] Player {my_id} (exploration) selected {letter}: Reward {reward}, Cost {cost}")
+            return {my_id: dict(
+                reward=reward,
+                cost=cost,
+                training=True,
+                training_exploration=True,
+                training_duration=round(training_duration, 2)
+            )}
+
+        return {my_id: dict(
+            training=True,
+            training_exploration=True,
+            training_duration=round(training_duration, 2)
+        )}
+
+    # === TRAINING PERFORMANCE SUB-PHASE ===
+    if data.get('end_training'):
+        submitted_answer = data.get('best_deck_answer')
+        if submitted_answer == 'A':
+            player.in_training = False
+            
+            player.end_time = time.time()
+            player.training_passed = True
+            total_time = player.end_time - player.training_start_time if player.training_start_time else 0
+            player.in_exploration_phase = True
+            print(f"[LIVE] Player {my_id} ended full training at {player.end_time}. Total training duration: {total_time:.2f} sec.")
+            return {my_id: dict(training_complete=True, total_time=round(total_time, 2))}
+        else:
+            print(f"[LIVE] Player {my_id} answered incorrectly ({submitted_answer}). Restarting exploration.")
+            player.training_exploration = True
+            return {my_id: dict(
+                training_incorrect=True,
+                restart_exploration=True,
+                message="Incorrect. Please re-explore the decks and try again."
+            )}
+
+    if data.get('letter'):
+        letter = data['letter']
+        deck = player.deck_layout.index(letter)
+        reward = C.TRAINING_REWARDS[deck]
+        cost = C.TRAINING_COSTS[deck]
+        payoff = reward - cost
+
+        player.participant.vars['training_temp_log'].append(dict(
+            timestamp=round(time.time(), 2),
+            letter=letter,
+            deck=deck,
+            reward=float(reward),
+            cost=float(cost),
+            payoff=payoff
+        ))
+
+        player.cum_payoff_training += payoff
+        print(f"[TRAINING] Player {my_id} (performance) selected {letter}: Reward {reward}, Cost {cost}, New cumulative: {player.cum_payoff_training}")
+
+        return {my_id: dict(
+            training=True,
+            training_exploration=False,
+            training_duration=round(training_duration, 2),
+            cum_payoff=player.cum_payoff_training
+        )}
+
+    return {my_id: dict(
+        training=True,
+        training_exploration=False,    
+        training_duration=round(training_duration, 2),
+        cum_payoff=player.cum_payoff_training
+    )}

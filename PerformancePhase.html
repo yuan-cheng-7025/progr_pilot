@@ -1,0 +1,135 @@
+{{ extends 'global/Page.html' }}
+{{ block title }}Make your choices!{{ endblock }}
+
+{{ block content }}
+
+{% load otree static %}
+
+<p>Your choices in this phase will count toward your final score.</p>
+<p><strong>Your total payoff:</strong> <span id="cum_payoff">0 points</span></p>
+
+{% if player.competition %}
+<div id="scoreboard-container">
+    <h4>🏆 Group Scoreboard</h4>
+    <table class="table table-sm" id="scoreboard">
+        <thead><tr><th>Rank</th><th>Player</th><th>Payoff</th></tr></thead>
+        <tbody></tbody>
+    </table>
+</div>
+{% endif %}
+
+<form id="form" method="post">
+    {{ formfields }}
+
+    <div class="row">
+        {% for letter in 'ABCD' %}
+        <div class="col">
+            <button type="button" value="{{ letter }}" class="btn-card">
+                <div class="card" style="width: 10rem; height: 14rem">
+                    <div class="card-body">
+                        <h2 class="card-title">Deck</h2>
+                        <h1 class="card-title">{{ letter }}</h1>
+                    </div>
+                </div>
+            </button>
+        </div>
+        {% endfor %}
+    </div>
+</form>
+
+<style>
+    .highlight-player {
+        background-color: #ffe599;
+        font-weight: bold;
+    }
+</style>
+
+<script>
+    const myID = {{ player.id_in_group }};
+    let buttons = document.getElementsByClassName('btn-card');
+    // Disable buttons on load to prevent clicking
+    for (let b of buttons) {
+        b.disabled = true;
+    }
+
+    let msgCost = document.getElementById('cost');
+    let msgReward = document.getElementById('reward');
+    let msgCumPayoff = document.getElementById('cum_payoff');
+
+    function liveRecv(data) {
+        console.log('📨 liveRecv got:', data);
+
+        if (data.finished) {
+            console.log('✅ Trials complete — submitting form');
+            document.getElementById('form').submit();
+            return;
+        }
+
+        //if ('reward' in data && msgReward && msgCost) {
+            //msgReward.innerHTML = cu(data.reward);
+            //msgCost.innerHTML = data.cost === 0 ? '' : cu(data.cost);
+        //}
+
+        if ('cum_payoff' in data && msgCumPayoff) {
+            msgCumPayoff.innerHTML = cu(data.cum_payoff);
+        }
+
+        if (data.scoreboard !== undefined && data.scoreboard !== null) {
+            updateScoreboard(data.scoreboard);
+        }
+
+        for (let b of buttons) b.disabled = false;
+    }
+
+    function cu(amount) {
+        return `${amount} points`;
+    }
+
+    {% if player.competition %}
+    function updateScoreboard(scores) {
+        let tbody = document.querySelector('#scoreboard tbody');
+        tbody.innerHTML = '';
+        for (let entry of scores) {
+            let highlight = (entry.id === myID) ? ' class="highlight-player"' : '';
+            let row = `<tr${highlight}>
+                <td>${entry.rank}</td>
+                <td>Player ${entry.id}</td>
+                <td>${entry.payoff}</td>
+            </tr>`;
+            tbody.innerHTML += row;
+        }
+    }
+    {% endif %}
+
+    document.addEventListener("DOMContentLoaded", function () {
+        console.log("🚀 DOM ready — sending initial liveSend");
+        liveSend({});
+    });
+
+    document.addEventListener("keydown", function (event) {
+
+        let keyMap = {
+            'KeyS': 'A',
+            'KeyF': 'B',
+            'KeyJ': 'C',
+            'KeyL': 'D'
+        };
+
+        let letter = keyMap[event.code];
+        if (letter) {
+            console.log(`🎴 Key "${event.key}" pressed, selecting deck ${letter}`);
+            liveSend({ letter: letter });
+
+            for (let b of buttons) b.disabled = true;
+
+            for (let b of buttons) {
+                if (b.value === letter) {
+                    b.style.outline = "4px solid yellow";
+                    setTimeout(() => b.style.outline = "", 200);
+                }
+            }
+        }
+    });
+</script>
+
+{{ endblock }}

@@ -2,9 +2,9 @@
 from otree.api import *
 c = cu
 
-doc = ''
+doc = 'pilot\npre-decisional search\ntime pressure & competition'
 class C(BaseConstants):
-    NAME_IN_URL = 'sampling_game'
+    NAME_IN_URL = 'sampling_game_pilot'
     PLAYERS_PER_GROUP = 5
     NUM_ROUNDS = 1
     NUM_BLOCKS = 10
@@ -13,6 +13,8 @@ class C(BaseConstants):
     BLOCK_SIZE = 10
     REWARDS = (100, 100, 50, 50)
     ENDOWMENT = cu(3000)
+    TRAINING_REWARDS = (100, 10, 30, 20)
+    TRAINING_COSTS = (0, 10, 0, 0)
 class Subsession(BaseSubsession):
     my_field = models.FloatField()
 def generate_block(subsession: Subsession):
@@ -54,58 +56,13 @@ def creating_session(subsession: Subsession):
         player.competition = competition
     
         deck_layout = ['A', 'B', 'C', 'D']
-        random.shuffle(deck_layout)
+        random.shuffle(deck_layout) 
+        # Randomized deck layout
         player.deck_layout = ''.join(deck_layout)
     
         print(f"Player {player.id_in_subsession}: TP={time_pressure}, COMP={competition}, Deck={player.deck_layout}")
-    
-    # === Grouping non-competition players immediately ===
-    non_competition_players = [p for p in players if not p.competition]
-    competition_players = [p for p in players if p.competition]
-    
-    # Create solo groups for non-competition players
-    non_competition_groups = [[p] for p in non_competition_players]
-    
-    # Create placeholders for competition players
-    competition_placeholders = [[p] for p in competition_players]
-    
-    # Full matrix: everyone must belong to a group, even if waiting for arrival-based regrouping later
-    full_group_matrix = non_competition_groups + competition_placeholders
-    subsession.set_group_matrix(full_group_matrix)
-    
-    
-def group_by_arrival_time_method(subsession: Subsession, waiting_players):
-    import time
-    PLAYERS_PER_GROUP = 5
-    now = time.time()
-    
-    competition_players = [p for p in waiting_players if p.competition]
-    
-    if len(competition_players) >= PLAYERS_PER_GROUP:
-        return competition_players[:PLAYERS_PER_GROUP]
-    
-    for p in competition_players:
-        if 'arrival_time' not in p.participant.vars:
-            p.participant.vars['arrival_time'] = now
-    
-    for p in competition_players:
-        waited = now - p.participant.vars['arrival_time']
-        if waited > 60:
-            for late_p in competition_players:
-                late_p.participant.vars['grouping_failed'] = True
-                late_p.participant.vars['timeout_message'] = "⏰ Not enough players joined your group within the time limit."
-            print(f"⚠️ Timeout: Only {len(competition_players)} players — marking as failed.")
-            return competition_players  # return the players as a FLAT list!
-    
-    return None  # Keep waiting
 class Group(BaseGroup):
     pass
-def after_all_player_arrive(group: Group):
-    for p in group.get_players():
-            if p.participant.vars.get('grouping_failed'):
-                p.participant.vars['timeout_message'] = (
-                    "⏰ Not enough players joined your group within the time limit."
-                )
 class Player(BasePlayer):
     num0 = models.IntegerField(initial=0)
     num1 = models.IntegerField(initial=0)
@@ -115,14 +72,39 @@ class Player(BasePlayer):
     deck_layout = models.StringField()
     time_pressure = models.BooleanField()
     competition = models.BooleanField()
-    in_exploration_phase = models.BooleanField(initial=True)
+    in_training = models.BooleanField(initial=True)
+    training_exploration = models.BooleanField(initial=True)
+    in_exploration_phase = models.BooleanField(initial=False)
     start_time = models.FloatField()
+    end_time = models.FloatField()
+    training_start_time = models.FloatField()
     exploration_duration = models.FloatField(initial=0)
     penalty = models.FloatField(initial=0)
     cum_payoff = models.FloatField(initial=0)
-    exploration_log = models.LongStringField()
     performance_starting_payoff = models.FloatField()
+    exploration_log = models.LongStringField()
     performance_log = models.LongStringField()
+    best_deck_selection = models.StringField(initial='choice = ["A", "B", "C", "D"]')
+    cum_payoff_training = models.FloatField(initial=0)
+    exploration_temp_log = models.LongStringField(initial='[]')
+    training_passed = models.BooleanField(initial=True)
+    training_exploration_duration = models.FloatField()
+    training_penalty = models.FloatField(initial=0)
+    training_cum_payoff = models.FloatField(initial=0)
+    training_duration = models.FloatField()
+    training_performance_start = models.FloatField()
+    training_payoff = models.FloatField()
+def get_penalty(player: Player):
+    # Calculate penlaty when time pressure is true
+    if player.time_pressure:
+        if player.in_training:
+            duration = player.training_exploration_duration if player.training_exploration_duration is not None else 0
+        else:
+            duration = player.exploration_duration if player.exploration_duration is not None else 0
+        return round(50 * duration)
+    else: 
+        print("Time pressure is False. Returning 0.")
+        return 0
 def live_method(player: Player, data):
     session = player.session
     group = player.group
@@ -132,8 +114,137 @@ def live_method(player: Player, data):
     
     my_id = player.id_in_group
     print(f"[LIVE] Player {my_id} sent data: {data}")
+    print(f"[DEBUG] live_method triggered — "
+          f"in_training={player.in_training}, "
+          f"training_exploration={player.training_exploration}, "
+          f"in_exploration_phase={player.in_exploration_phase}, "
+          f"data={data}")
     
-    # === EXPLORATION PHASE ===
+    # === TRAINING PHASE ===
+    if player.in_training:
+        if data.get('start_training'):
+            start_training(player)
+            return {my_id: dict(training=True, training_duration=0.0)}
+        # Wait for participant to read the instructions before they start the training
+        if player.field_maybe_none('training_start_time') is None:
+            print(f"[LIVE] Player {my_id} has not started training yet. Waiting for start.")
+            return {my_id: dict(training=True, waiting_for_start=True)}
+    
+        training_duration = time.time() - player.training_start_time
+    
+        # Training exploration phase: 
+        if player.training_exploration:
+            # Record training duraction and exploration duration 
+            player.training_exploration_duration = training_duration
+            player.training_penalty = get_penalty(player)
+            player.training_cum_payoff = 3000 - player.training_penalty
+            print(f"[LIVE] Player {player.id_in_group} - Training Penalty: {player.training_penalty}")
+    
+            # Show scoreboard if needed
+            scoreboard = get_scoreboard(player)
+    
+            if data.get('end_exploration'):
+                player.training_exploration = False
+                player.training_performance_start = max(3000 - player.training_penalty, 0)  
+                player.cum_payoff_training = player.training_performance_start
+                print(f"[LIVE] Player {my_id} ended exploration via SPACEBAR. Moving to PERFORMANCE sub-phase.")
+                return {my_id: dict(training_passed=True)}
+                player.training_temp_log = json.dumps(player.participant.vars.get('training_temp_log', []))
+                print('Saved training log:', player.participant.vars['training_temp_log'])
+    
+            if data.get('letter'):
+                letter = data['letter']
+                deck = player.deck_layout.index(letter)
+                reward = C.TRAINING_REWARDS[deck]
+                cost = C.TRAINING_COSTS[deck]
+                payoff = reward - cost
+    
+                player.participant.vars['training_temp_log'].append(dict(
+                    timestamp=round(time.time(), 2),
+                    letter=letter,
+                    deck=deck,
+                    reward=float(reward),
+                    cost=float(cost),
+                    payoff=payoff
+                ))
+    
+                print(f"[TRAINING] Player {my_id} (exploration) selected {letter}: Reward {reward}, Cost {cost}")
+    
+            return {my_id: dict(
+                training=True,
+                training_exploration=True,
+                training_duration=round(training_duration, 2),
+                reward=float(reward),
+                cost=float(cost),
+                payoff=payoff,
+                penalty=player.training_penalty,
+                cum_payoff=player.training_cum_payoff,
+                scoreboard=scoreboard
+            )}
+    
+    
+        # === TRAINING PERFORMANCE SUB-PHASE ===
+        scoreboard = []
+        if data.get('end_training'):
+            submitted_answer = data.get('best_deck_answer')
+            correct_answer = player.deck_layout[player.deck_layout.index('A')]
+    
+            if submitted_answer == correct_answer:
+                player.in_training = False
+    
+                player.end_time = time.time()
+                player.training_passed = True
+                total_time = player.end_time - player.training_start_time if player.training_start_time else 0
+                player.in_exploration_phase = True
+                print(f"[LIVE] Player {my_id} ended full training at {player.end_time}. Total training duration: {total_time:.2f} sec.")
+                return {my_id: dict(training_complete=True, total_time=round(total_time, 2))}
+            else:
+                print(f"[LIVE] Player {my_id} answered incorrectly ({submitted_answer}). Restarting exploration.")
+                player.training_exploration = True
+                return {my_id: dict(
+                    training_incorrect=True,
+                    restart_exploration=True,
+                    message="Incorrect. Please re-explore the decks and try again."
+                )}
+    
+        if data.get('letter'):
+            letter = data['letter']
+            deck = player.deck_layout.index(letter)
+            reward = C.TRAINING_REWARDS[deck]
+            cost = C.TRAINING_COSTS[deck]
+            payoff = reward - cost
+    
+            player.participant.vars['training_temp_log'].append(dict(
+                timestamp=round(time.time(), 2),
+                letter=letter,
+                deck=deck,
+                reward=float(reward),
+                cost=float(cost),
+                payoff=payoff
+            ))
+    
+            player.cum_payoff_training += payoff
+            print(f"[TRAINING] Player {my_id} (performance) selected {letter}: Reward {reward}, Cost {cost}, New cumulative: {player.cum_payoff_training}")
+    
+            scoreboard = get_scoreboard(player)
+    
+            return {my_id: dict(
+                training=True,
+                training_exploration=False,
+                training_duration=round(training_duration, 2),
+                cum_payoff=player.cum_payoff_training,
+                scoreboard = scoreboard
+            )}
+    
+        return {my_id: dict(
+            training=True,
+            training_exploration=False,    
+            training_duration=round(training_duration, 2),
+            cum_payoff=player.cum_payoff_training,
+            scoreboard = scoreboard
+        )}
+    
+    # === MAIN STUDY: EXPLORATION PHASE ===
     if player.in_exploration_phase:
         if player.field_maybe_none('start_time') is None:
             player.start_time = time.time()
@@ -141,8 +252,10 @@ def live_method(player: Player, data):
             print(f"[LIVE] Player {my_id} start_time initialized to {player.start_time}.")
     
         player.exploration_duration = time.time() - player.start_time
-        penalty = round(50 * player.exploration_duration)
-        cum_payoff = max(3000 - penalty, 0)
+        penalty = get_penalty(player)
+        player.penalty = penalty
+        cum_payoff = 3000 - penalty
+    
     
         log_entry = dict(
             timestamp=round(time.time(), 2),
@@ -152,25 +265,8 @@ def live_method(player: Player, data):
         )
         player.participant.vars['exploration_temp_log'].append(log_entry)
     
-        # --- Rank calculation for competition condition
-        if player.competition:
-            all_scores = []
-            for p in player.group.get_players():
-                if p.in_exploration_phase:
-                    if p.field_maybe_none('start_time') is not None:
-                        duration = time.time() - p.start_time
-                        temp_penalty = round(50 * duration)
-                        temp_cum_payoff = max(3000 - temp_penalty, 0)
-                        all_scores.append((p.id_in_group, temp_cum_payoff))
-                    else:
-                        all_scores.append((p.id_in_group, 3000))
-                else:
-                    all_scores.append((p.id_in_group, p.performance_starting_payoff))
-    
-            ranked = sorted(all_scores, key=lambda x: x[1], reverse=True)
-            scoreboard = [{ 'id': pid, 'payoff': s, 'rank': i+1 } for i, (pid, s) in enumerate(ranked)]
-        else:
-            scoreboard = None
+        # Rank for competition
+        scoreboard = get_scoreboard(player)
     
         print(f"[LIVE] Player {my_id} - Exploration Duration: {player.exploration_duration:.2f}s, Penalty: {penalty}, Cum_Payoff: {cum_payoff}")
     
@@ -197,27 +293,21 @@ def live_method(player: Player, data):
             print(f"[ERROR] Player {my_id} had no start_time logged.")
     
         player.exploration_log = json.dumps(player.participant.vars.get('exploration_temp_log', []))
-        penalty = round(50 * player.exploration_duration)
-        player.performance_starting_payoff = max(3000 - penalty, 0)
+        print('Saved exploration log:', player.participant.vars['exploration_temp_log'])
+        penalty = get_penalty(player)  
+        player.performance_starting_payoff = max(3000 - penalty, 0)  # Set only after exploration phase ends
         player.payoff = player.performance_starting_payoff
-        player.participant.vars['performance_temp_log'] = []
+        player.participant.vars['performance_log'] = []
     
         print(f"[LIVE] Player {my_id} starting performance phase with payoff: {player.payoff}")
         return {my_id: dict(
             phase_switched=True,
+            training_passed=True,
             exploration_duration=round(player.exploration_duration, 2),
             penalty=penalty
         )}
     
-    # === CHECK IF FINISHED ===
-    if player.num_trials == C.NUM_TRIALS:
-        print(f"[LIVE] Player {my_id} finished all trials.")
-        if 'performance_temp_log' in player.participant.vars:
-            player.performance_log = json.dumps(player.participant.vars['performance_temp_log'])
-        return {my_id: dict(finished=True)}
-    
-    # === CARD SELECTION ===
-    resp = {}
+    # === PERFORMANCE PHASE: CARD SELECTION ===
     if 'letter' in data:
         letter = data['letter']
         print(f"[LIVE] Player {my_id} selected letter: {letter}")
@@ -237,7 +327,7 @@ def live_method(player: Player, data):
                 print(f"[EXPLORATION] Player {my_id} drew from deck {letter}. Not counted toward payoff.")
             else:
                 player.payoff += payoff
-                player.participant.vars['performance_temp_log'].append(dict(
+                player.participant.vars['performance_log'].append(dict(
                     timestamp=round(time.time(), 2),
                     letter=letter,
                     deck=deck,
@@ -247,29 +337,13 @@ def live_method(player: Player, data):
                     num_trials=player.num_trials
                 ))
     
-            penalty = round(50 * player.exploration_duration)
+            penalty = get_penalty(player) 
             cum_payoff = max(3000 - penalty, 0) if player.in_exploration_phase else float(player.payoff)
     
-            # Compute live ranks for competition treatment
-            if player.competition:
-                all_scores = []
-                for p in player.group.get_players():
-                    if p.in_exploration_phase:
-                        if p.field_maybe_none('start_time') is not None:
-                            duration = time.time() - p.start_time
-                            temp_penalty = round(50 * duration)
-                            temp_cum_payoff = max(3000 - temp_penalty, 0)
-                            all_scores.append((p.id_in_group, temp_cum_payoff))
-                        else:
-                            all_scores.append((p.id_in_group, 3000))
-                    else:
-                        all_scores.append((p.id_in_group, float(p.payoff)))
-                ranked = sorted(all_scores, key=lambda x: x[1], reverse=True)
-                scoreboard = [{ 'id': pid, 'payoff': s, 'rank': i+1 } for i, (pid, s) in enumerate(ranked)]
-            else:
-                scoreboard = None
+            # Update scoreboard if in competition treatment
+            scoreboard = get_scoreboard(player)
     
-            resp.update(
+            resp = dict(
                 cost=float(cost),
                 reward=float(reward),
                 cum_payoff=cum_payoff,
@@ -283,35 +357,73 @@ def live_method(player: Player, data):
             print(f"[LIVE] Player {my_id} - Reward: {reward}, Cost: {cost}, Payoff: {payoff}")
             print(f"[LIVE] Trials: {player.num_trials}, Cumulative Payoff: {resp['cum_payoff']}")
     
+            if player.num_trials == C.NUM_TRIALS:
+                player.performance_log = json.dumps(player.participant.vars.get('performance_log', []))
+                resp['finished'] = True
+                print(f"[LIVE] Player {my_id} finished all trials.")
+    
+            return {my_id: resp}
+    
         except Exception as e:
             print(f"[ERROR] Processing player {my_id}: {e}")
-            resp.update(error=str(e))
+            return {my_id: dict(error=str(e))}
     
-    if player.num_trials == C.NUM_TRIALS:
-        print(f"[LIVE] Player {my_id} finished all trials.")
-        resp.update(finished=True)
-        if 'performance_temp_log' in player.participant.vars:
-            player.performance_log = json.dumps(player.participant.vars['performance_temp_log'])
-    
-    print(f"[LIVE] Sending back to {my_id}: {resp}")
-    return {my_id: resp}
-class GroupWait_Start(WaitPage):
-    group_by_arrival_time = True
-    after_all_players_arrive = after_all_player_arrive
-    @staticmethod
-    def is_displayed(player: Player):
-        return player.competition  # only competition players wait here
+    # === DEFAULT RETURN ===
+    return {my_id: {}}
+def get_scoreboard(player: Player):
+    group = player.group
+    # Update scoreboard for group under competition
+    scoreboard = None
+    if player.competition:
+        all_scores = []
+        for p in player.group.get_players():
+            #==  Training phase   ==
+            if player.in_training: 
+                if p.training_exploration:
+                    temp_trainning_penalty = get_penalty(player)
+                    temp_training_cum_payoff = 3000 - temp_trainning_penalty
+                    all_scores.append((p.id_in_group, temp_training_cum_payoff))
+                else:
+                    # For training performance, use training cumulative payoff
+                    all_scores.append((p.id_in_group, float(p.cum_payoff_training)))
+            #==  Main study == 
+            elif p.in_exploration_phase:
+                if p.field_maybe_none('start_time') is not None:
+                   # changed: duration = time.time() - p.start_time
+                   temp_penalty = get_penalty(player) #changes
+                   temp_cum_payoff = max(3000 - temp_penalty, 0)
+                   all_scores.append((p.id_in_group, temp_cum_payoff))
+                else:
+                   all_scores.append((p.id_in_group, 3000))
+            else:
+                all_scores.append((p.id_in_group, float(p.payoff)))
+        ranked = sorted(all_scores, key=lambda x: x[1], reverse=True)
+        scoreboard = [{'id': pid, 'payoff': s, 'rank': i+1} for i, (pid, s) in enumerate(ranked)]
+    return scoreboard
+def start_training(player: Player):
+    session = player.session
+    group = player.group
+    participant = player.participant
+    # Initialize training session
+    import time
+    player.training_exploration = True
+    player.training_start_time = time.time()
+    player.participant.vars['training_temp_log']=[]
+    print(f"[LIVE] Player {player.id_in_group} started training at {player.training_start_time}.")
 class IntroductionPage(Page):
     form_model = 'player'
-    @staticmethod
-    def is_displayed(player: Player):
-        return True
     @staticmethod
     def vars_for_template(player: Player):
         participant = player.participant
         return {
                 'timeout_message': player.participant.vars.get('timeout_message')
             }
+class TrainingExploration(Page):
+    form_model = 'player'
+    live_method = 'live_method'
+class TrainingPerform(Page):
+    form_model = 'player'
+    live_method = 'live_method'
 class ExplorationPhase(Page):
     form_model = 'player'
     live_method = 'live_method'
@@ -319,15 +431,16 @@ class TrasitionPage(Page):
     form_model = 'player'
     @staticmethod
     def is_displayed(player: Player):
-        print(f"[DEBUG] Checking if Performance should be shown: {not player.in_exploration_phase}")
         return not player.in_exploration_phase
     @staticmethod
     def before_next_page(player: Player, timeout_happened):
         group = player.group
-        print(f"[DEBUG] Switching to performance phase for Player {player.id_in_group}")
-        player.in_exploration_phase = False
-        player.num_trials = 0  # reset trial count for performance phase if desired
-class PeformancePhase(Page):
+        participant = player.participant
+        if player.participant.vars.get('phase_switched'):
+            print(f"[DEBUG] Switching to performance phase for Player {player.id_in_group}")
+            player.in_exploration_phase = False
+            player.num_trials = 0  # Reset trial count for performance phase if desired
+class PerformancePhase(Page):
     form_model = 'player'
     live_method = 'live_method'
     @staticmethod
@@ -335,4 +448,4 @@ class PeformancePhase(Page):
         return not player.in_exploration_phase
 class ResultPage(Page):
     form_model = 'player'
-page_sequence = [GroupWait_Start, IntroductionPage, ExplorationPhase, TrasitionPage, PeformancePhase, ResultPage]
+page_sequence = [IntroductionPage, TrainingExploration, TrainingPerform, ExplorationPhase, TrasitionPage, PerformancePhase, ResultPage]

@@ -21,17 +21,6 @@
 <form id="form" method="post">
     {{ formfields }}
 
-    <table class="table">
-        <tr>
-            <td>Last card reward</td>
-            <td id="reward" style="color: green"></td>
-        </tr>
-        <tr>
-            <td>Last card cost</td>
-            <td id="cost" style="color: red"></td>
-        </tr>
-    </table>
-
     <div class="row">
         {% for letter in 'ABCD' %}
         <div class="col">
@@ -76,10 +65,10 @@
             return;
         }
 
-        if ('reward' in data && msgReward && msgCost) {
-            msgReward.innerHTML = cu(data.reward);
-            msgCost.innerHTML = data.cost === 0 ? '' : cu(data.cost);
-        }
+        //if ('reward' in data && msgReward && msgCost) {
+            //msgReward.innerHTML = cu(data.reward);
+            //msgCost.innerHTML = data.cost === 0 ? '' : cu(data.cost);
+        //}
 
         if ('cum_payoff' in data && msgCumPayoff) {
             msgCumPayoff.innerHTML = cu(data.cum_payoff);
@@ -144,4 +133,3 @@
 </script>
 
 {{ endblock }}
-

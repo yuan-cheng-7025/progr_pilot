@@ -308,68 +308,89 @@ def live_method(player: Player, data):
         )}
     
     # === PERFORMANCE PHASE: CARD SELECTION ===
-    if 'letter' in data:
-        letter = data['letter']
-        print(f"[LIVE] Player {my_id} selected letter: {letter}")
+    if not player.in_exploration_phase and not player.in_training:
+        # Update scoreboard when a selection is made
+        if 'letter' in data:
+            letter = data['letter']
+            print(f"[LIVE] Player {my_id} selected letter: {letter}")
     
-        try:
-            deck = player.deck_layout.index(letter)
-            field_name = f'num{deck}'
-            cur_count = getattr(player, field_name)
-            reward = C.REWARDS[deck]
-            cost = session.vars['iowa_costs'][deck][cur_count]
-            payoff = reward - cost
+            try:
+                deck = player.deck_layout.index(letter)
+                field_name = f'num{deck}'
+                cur_count = getattr(player, field_name)
+                reward = C.REWARDS[deck]
+                cost = session.vars['iowa_costs'][deck][cur_count]
+                payoff = reward - cost
     
-            setattr(player, field_name, cur_count + 1)
-            player.num_trials += 1
+                setattr(player, field_name, cur_count + 1)
+                player.num_trials += 1
     
-            if player.in_exploration_phase:
-                print(f"[EXPLORATION] Player {my_id} drew from deck {letter}. Not counted toward payoff.")
-            else:
-                player.payoff += payoff
-                player.participant.vars['performance_log'].append(dict(
-                    timestamp=round(time.time(), 2),
-                    letter=letter,
-                    deck=deck,
-                    reward=float(reward),
+                if player.in_exploration_phase:
+                    print(f"[EXPLORATION] Player {my_id} drew from deck {letter}. Not counted toward payoff.")
+                else:
+                    player.payoff += payoff
+                    player.participant.vars['performance_log'].append(dict(
+                        timestamp=round(time.time(), 2),
+                        letter=letter,
+                        deck=deck,
+                        reward=float(reward),
+                        cost=float(cost),
+                        payoff=float(player.payoff),
+                        num_trials=player.num_trials
+                    ))
+    
+                penalty = get_penalty(player) 
+                cum_payoff = max(3000 - penalty, 0) if player.in_exploration_phase else float(player.payoff)
+                
+                # Update scoreboard if in competition treatment
+                scoreboard = get_scoreboard(player)
+            
+                resp = dict(
                     cost=float(cost),
-                    payoff=float(player.payoff),
-                    num_trials=player.num_trials
-                ))
+                    reward=float(reward),
+                    cum_payoff=cum_payoff,
+                    num_trials=player.num_trials,
+                    exploration=player.in_exploration_phase,
+                    exploration_duration=round(player.exploration_duration, 2),
+                    penalty=penalty if player.in_exploration_phase else 0,
+                    scoreboard=scoreboard
+                )
     
-            penalty = get_penalty(player) 
-            cum_payoff = max(3000 - penalty, 0) if player.in_exploration_phase else float(player.payoff)
+                print(f"[LIVE] Player {my_id} - Reward: {reward}, Cost: {cost}, Payoff: {payoff}")
+                print(f"[LIVE] Trials: {player.num_trials}, Cumulative Payoff: {resp['cum_payoff']}")
     
-            # Update scoreboard if in competition treatment
-            scoreboard = get_scoreboard(player)
+                if player.num_trials == C.NUM_TRIALS:
+                    player.performance_log = json.dumps(player.participant.vars.get('performance_log', []))
+                    resp['finished'] = True
+                    print(f"[LIVE] Player {my_id} finished all trials.")
     
-            resp = dict(
-                cost=float(cost),
-                reward=float(reward),
-                cum_payoff=cum_payoff,
-                num_trials=player.num_trials,
-                exploration=player.in_exploration_phase,
-                exploration_duration=round(player.exploration_duration, 2),
-                penalty=penalty if player.in_exploration_phase else 0,
-                scoreboard=scoreboard
+                return {my_id: resp}
+    
+            except Exception as e:
+                print(f"[ERROR] Processing player {my_id}: {e}")
+                return {my_id: dict(error=str(e))}
+            
+       # === Passive scoreboard update if no card selected ===
+        if player.field_maybe_none('performance_start_time') is None:
+            player.performance_start_time = time.time()  # Initialize if not already set
+            print(f"[LIVE] Player {my_id} performance phase started.")
+        
+        cum_payoff = float(player.payoff)
+        scoreboard = get_scoreboard(player)
+        
+        response = {
+            my_id:dict(
+                performance = True,
+                cum_payoff = cum_payoff,
+                scoreboard = scoreboard  # update scoreboard in real-time
             )
-    
-            print(f"[LIVE] Player {my_id} - Reward: {reward}, Cost: {cost}, Payoff: {payoff}")
-            print(f"[LIVE] Trials: {player.num_trials}, Cumulative Payoff: {resp['cum_payoff']}")
-    
-            if player.num_trials == C.NUM_TRIALS:
-                player.performance_log = json.dumps(player.participant.vars.get('performance_log', []))
-                resp['finished'] = True
-                print(f"[LIVE] Player {my_id} finished all trials.")
-    
-            return {my_id: resp}
-    
-        except Exception as e:
-            print(f"[ERROR] Processing player {my_id}: {e}")
-            return {my_id: dict(error=str(e))}
+        }
+
+        return response
     
     # === DEFAULT RETURN ===
     return {my_id: {}}
+
 def get_scoreboard(player: Player):
     group = player.group
     # Update scoreboard for group under competition

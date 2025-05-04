@@ -78,7 +78,7 @@ Your choices in this phase will <strong>not</strong> affect your final performan
 
     function liveRecv(data) {
         if (data.phase_switched || data.finished) {
-            console.log("🚨 Exploration ended. Reloading page...");
+            console.log("Exploration ended. Reloading page...");
             {% if player.time_pressure %} clearInterval(timerInterval); {% endif %}
             document.getElementById('form').submit();
             return;
@@ -127,7 +127,7 @@ Your choices in this phase will <strong>not</strong> affect your final performan
     {% endif %}
 
     document.addEventListener("DOMContentLoaded", () => {
-        console.log("🚀 DOM fully loaded. Sending initial liveSend...");
+        console.log("DOM fully loaded. Sending initial liveSend...");
         liveSend({});
     });
 
@@ -143,7 +143,7 @@ Your choices in this phase will <strong>not</strong> affect your final performan
         let letter = keyMap[event.code];
 
         if (letter) {
-            console.log(`🎴 Key "${event.key}" pressed, selecting deck ${letter}`);
+            console.log(`Key "${event.key}" pressed, selecting deck ${letter}`);
             liveSend({ letter: letter });
 
             for (let b of buttons) { b.disabled = true; }

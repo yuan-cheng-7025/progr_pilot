@@ -57,10 +57,10 @@
     let msgCumPayoff = document.getElementById('cum_payoff');
 
     function liveRecv(data) {
-        console.log('📨 liveRecv got:', data);
+        console.log('liveRecv got:', data);
 
         if (data.finished) {
-            console.log('✅ Trials complete — submitting form');
+            console.log('Trials complete — submitting form');
             document.getElementById('form').submit();
             return;
         }
@@ -102,7 +102,7 @@
     {% endif %}
 
     document.addEventListener("DOMContentLoaded", function () {
-        console.log("🚀 DOM ready — sending initial liveSend");
+        console.log("DOM ready — sending initial liveSend");
         liveSend({});
     });
 
@@ -117,7 +117,7 @@
 
         let letter = keyMap[event.code];
         if (letter) {
-            console.log(`🎴 Key "${event.key}" pressed, selecting deck ${letter}`);
+            console.log(`Key "${event.key}" pressed, selecting deck ${letter}`);
             liveSend({ letter: letter });
 
             for (let b of buttons) b.disabled = true;

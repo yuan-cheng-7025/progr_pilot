@@ -126,7 +126,7 @@
         if (!trainingStarted) return;
 
         if (data.training_passed || data.finished) {
-            console.log("🚨 Exploration ended. Submitting form...");
+            console.log("Exploration ended. Submitting form...");
             {% if player.time_pressure %} clearInterval(timerInterval); {% endif %}
             document.getElementById('form').submit();
             return;
@@ -177,7 +177,7 @@
         if (!trainingStarted) return;
 
         if (event.code === "Space") {
-            console.log("⏩ Spacebar pressed: ending exploration phase.");
+            console.log("Spacebar pressed: ending exploration phase.");
             {% if player.time_pressure %} clearInterval(timerInterval); {% endif %}
             liveSend({ end_exploration: true });
             return;
@@ -187,7 +187,7 @@
         let letter = keyMap[event.code];
 
         if (letter) {
-            console.log(`🎴 Key "${event.key}" pressed, selecting deck ${letter}`);
+            console.log(`Key "${event.key}" pressed, selecting deck ${letter}`);
             liveSend({ letter: letter });
 
             for (let b of buttons) { b.disabled = true; }
@@ -201,7 +201,7 @@
     });
 
     document.addEventListener("DOMContentLoaded", function () {
-        console.log("🚀 DOM loaded, waiting for training to start.");
+        console.log("DOM loaded, waiting for training to start.");
     });
 </script>
 
